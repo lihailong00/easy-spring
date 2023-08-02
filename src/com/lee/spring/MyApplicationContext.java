@@ -17,7 +17,8 @@ public class MyApplicationContext {
 
     private ConcurrentHashMap<String, MyBeanDefinition> beanDefinitionMap = new ConcurrentHashMap<>();
 
-    private ConcurrentHashMap<Object, Object> singletonObjects = new ConcurrentHashMap<>();
+    // <beanName, bean>
+    private ConcurrentHashMap<String, Object> singletonObjects = new ConcurrentHashMap<>();
 
     private ArrayList<MyBeanPostProcessor> beanPostProcessorList = new ArrayList<>();
 
@@ -28,7 +29,7 @@ public class MyApplicationContext {
         // 获取配置类
         this.configClass = configClass;
 
-        // 扫描 扫描ComponentScan路径下的类
+        // 扫描bean 扫描ComponentScan路径下的类
         if (configClass.isAnnotationPresent(MyComponentScan.class)) {
             MyComponentScan componentScanAnnotation = configClass.getAnnotation(MyComponentScan.class);
             // 扫描项目路径 com.lee.service
@@ -82,7 +83,7 @@ public class MyApplicationContext {
                                     beanDefinition.setScope(scopeAnnotation.value());
                                 }
                                 else {
-                                    beanDefinition.setScope("singleton");
+                                    beanDefinition.setScope(MyScope.MyScopeType.SINGLETON.getName());
                                 }
                                 beanDefinitionMap.put(beanName, beanDefinition);
                             }
@@ -97,8 +98,8 @@ public class MyApplicationContext {
         // 创建单例bean
         beanDefinitionMap.keySet().forEach(beanName -> {
             MyBeanDefinition beanDefinition = beanDefinitionMap.get(beanName);
-
-            if ("singleton".equals(beanDefinition.getScope())) {
+            // 获取单例bean
+            if (MyScope.MyScopeType.SINGLETON.getName().equals(beanDefinition.getScope())) {
                 Object bean = createBean(beanName, beanDefinition);
                 singletonObjects.put(beanName, bean);
             }
@@ -121,7 +122,11 @@ public class MyApplicationContext {
                     // 保证可以修改私有变量
                     field.setAccessible(true);
                     // 将变量名当做beanName，创建对象并赋值
-                    field.set(instance, getBean(field.getName()));
+                    String completeFieldTypeName = Introspector.decapitalize(field.getType().getName());
+                    int beginIndex = completeFieldTypeName.lastIndexOf(".") + 1;
+                    String fieldTypeName = completeFieldTypeName.substring(beginIndex);
+                    String fieldBeanName = Introspector.decapitalize(fieldTypeName);
+                    field.set(instance, getBean(fieldBeanName));
                 }
             }
 
@@ -168,15 +173,15 @@ public class MyApplicationContext {
         }
 
         String scope = beanDefinition.getScope();
-        if ("singleton".equals(scope)) {
+        if (MyScope.MyScopeType.SINGLETON.getName().equals(scope)) {
             Object bean = singletonObjects.get(beanName);
+            // 创建并缓存单例bean
             if (bean == null) {
-                Object bean1 = createBean(beanName, beanDefinition);
-                singletonObjects.put(beanName, bean1);
-                return bean1;
+                bean = createBean(beanName, beanDefinition);
+                singletonObjects.put(beanName, bean);
             }
             return bean;
-        } else if ("prototype".equals(scope)) {
+        } else if (MyScope.MyScopeType.PROTOTYPE.getName().equals(scope)) {
             return createBean(beanName, beanDefinition);
         } else {
             throw new NullPointerException();
